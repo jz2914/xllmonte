@@ -178,6 +178,7 @@
   <ItemGroup>
     <ClCompile Include="xllmonte_mean.cpp" />
     <ClCompile Include="xllmonte.cpp" />
+    <ClCompile Include="xll_stdev.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

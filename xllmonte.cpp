@@ -3,8 +3,11 @@
 
 using namespace xll;
 
-size_t xll::monte::count_ = 0; // idle
 double update = 0.4/86400;
+size_t xll::monte::count_;
+double xll::monte::start_;
+xll::monte::monte_state xll::monte::curr_, xll::monte::next_;
+
 
 AddIn xai_monte_count(
     Function(XLL_DOUBLE, L"?xll_monte_count_", L"MONTE.COUNT")
@@ -48,15 +51,18 @@ static void update_message_bar()
 			,xE
 		)
 	);
+
+    // Fool Excel into updating workbook.
+//    const auto& wb = Excel(xlfGetWorkbook, OPER(16));
+//    Excel(xlcWorkbookSelect, wb);
 }
 
 AddIn xai_monte_reset(Macro(L"?xll_monte_reset", XLL_PREFIX L".RESET"));
 int WINAPI xll_monte_reset()
 {
 #pragma XLLEXPORT
+    xll::monte::reset();
 
-    xll::monte::count_ = 0;
-    xll::monte::start_ = Excel(xlfNow);
     update_message_bar();
 
     return TRUE;
@@ -64,7 +70,7 @@ int WINAPI xll_monte_reset()
 
 void monte_step(void)
 {
-    ++xll_monte_count;
+    xll::monte::step();
     Excel(xlcCalculateNow);
 }
 AddIn xai_monte_step(Macro(L"?xll_monte_step", XLL_PREFIX L".STEP"));
@@ -85,9 +91,9 @@ int WINAPI xll_monte_run()
     bool run{true};
     double start = Excel(xlfNow);
 
-    xll_monte_count = 1; // first recalc
-    xll_monte_start = start;
+    xll::monte::reset();
     xll_monte_step(); // show signs of life
+
     Excel(xlcEcho, OPER(false));
     while (run) {
         double now = Excel(xlfNow);
@@ -95,9 +101,8 @@ int WINAPI xll_monte_run()
             start = now;
 
             Excel(xlcEcho, OPER(true));
-            xll_monte_step();
+            update_message_bar();
             Excel(xlcEcho, OPER(false));
-
 
             if (Excel(xlAbort)) {
                 run = false;
