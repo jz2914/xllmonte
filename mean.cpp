@@ -1,5 +1,5 @@
 // xllmonte_mean.cpp - running mean of a cell
-#include "xllmonte.h"
+#include "monte.h"
 
 using namespace xll;
 
@@ -16,23 +16,23 @@ LPOPER WINAPI xll_monte_mean(double x, BOOL reset)
 #pragma XLLEXPORT
     static OPER o;
 
-    double count = xll::monte::count();
     o = Excel(xlCoerce, Excel(xlfCaller));
-    if (count) {
-        if (count == 1 || reset) {
-            o[0] = x;
-            if (o.size() > 1)
-                o[1] = 1;
+    MONTE_STATE state = monte::state();
+
+    if (state == MONTE_RESET || reset) {
+        o[0] = 0;
+        if (o.size() > 1) {
+            o[1] = 0;
         }
-        else {
-            if (o.size() > 1) {
-                o[1] = o[1] + 1;
-                o[0] = o[0] + (x - o[0])/o[1];
-            }
-            else {
-                o[0] = o[0] + (x - o[0])/count;
-            }
+    }
+
+    if (state == MONTE_RUN) {
+        double count = monte::count();
+        if (o.size() > 1) {
+            o[1] = o[1] + 1;
+            count = o[1];
         }
+        o[0] = o[0] + (x - o[0])/count;
     }
 
     return &o;

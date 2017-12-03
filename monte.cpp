@@ -1,16 +1,45 @@
 // xllmonte.cpp - Monte Carlo simulation for Excel
-#include "xllmonte.h"
+#include "monte.h"
 
 using namespace xll;
 
-double update = 0.4/86400;
-size_t xll::monte::count_;
-double xll::monte::start_;
-xll::monte::monte_state xll::monte::curr_, xll::monte::next_;
+size_t monte::count_ = 0;
+MONTE_STATE monte::state_ = MONTE_IDLE;
+MONTE_STATE monte::next_state_ = MONTE_IDLE;
+int monte::calculate_ = xlcCalculateNow;
 
+// screen updates every 0.5 seconds
+constexpr double update = 0.5;
+
+struct Timer {
+    double start_, stop_, elapsed_;
+    bool running_ = false;
+    void start()
+    {
+        start_ = Excel(xlfNow);
+        elapsed_ = 0;
+        running_ = true;
+    }
+    void pause() {
+        stop_ = Excel(xlfNow);
+        elapsed_ += stop_ - start_;
+        running_ = false;
+    }
+    void resume()
+    {
+        start_ = Excel(xlfNow);
+        running_ = true;
+    }
+    // elapsed time in seconds
+    double elapsed() const
+    {
+        return 86400.*(elapsed_ + (running_ ? Excel(xlfNow) - start_ : 0));
+    }
+} timer, updater;
 
 AddIn xai_monte_count(
     Function(XLL_DOUBLE, L"?xll_monte_count_", L"MONTE.COUNT")
+    .Volatile()
     .FunctionHelp(L"Return current iteration count.")
     .Category(XLL_PREFIX)
 );
@@ -21,13 +50,14 @@ double WINAPI xll_monte_count_(void)
 }
 AddIn xai_monte_elapsed(
     Function(XLL_DOUBLE, L"?xll_monte_elapsed_", L"MONTE.ELAPSED")
+    .Volatile()
     .FunctionHelp(L"Return elapsed time in seconds since the start of the simulation.")
     .Category(XLL_PREFIX)
 );
 double WINAPI xll_monte_elapsed_(void)
 {
 #pragma XLLEXPORT
-    return xll::monte::elapsed();
+    return timer.elapsed();
 }
 
 static void update_message_bar()
@@ -36,8 +66,8 @@ static void update_message_bar()
 	static OPER xFmtCount(L"* #,##0");
 	static OPER xL(L" ["), xR(L"] "), xE(L"/s");
     
-    double count = xll::monte::count();
-    double elapsed = xll::monte::elapsed();
+    double count = monte::count();
+    double elapsed = timer.elapsed();
 	double per = elapsed == 0 ? 0 : count/elapsed;
 
 	Excel(xlcMessage
@@ -45,7 +75,7 @@ static void update_message_bar()
 		,Excel(xlfConcatenate
 			,Excel(xlfText, OPER(count), xFmtCount)
 			,xL
-			,Excel(xlfText, OPER(elapsed/86400), xFmtElapsed)
+			,Excel(xlfText, OPER(elapsed/86400.), xFmtElapsed)
 			,xR
 			,Excel(xlfText, OPER(per), xFmtCount)
 			,xE
@@ -61,24 +91,18 @@ AddIn xai_monte_reset(Macro(L"?xll_monte_reset", XLL_PREFIX L".RESET"));
 int WINAPI xll_monte_reset()
 {
 #pragma XLLEXPORT
-    xll::monte::reset();
-
+    monte::reset();
     update_message_bar();
 
     return TRUE;
 }
 
-void monte_step(void)
-{
-    xll::monte::step();
-    Excel(xlcCalculateNow);
-}
 AddIn xai_monte_step(Macro(L"?xll_monte_step", XLL_PREFIX L".STEP"));
 int WINAPI xll_monte_step()
 {
 #pragma XLLEXPORT
-
-    monte_step();
+    monte::next_state(monte::state());
+    monte::step();
     update_message_bar();
     
     return TRUE;
@@ -88,30 +112,46 @@ AddIn xai_monte_run(Macro(L"?xll_monte_run", XLL_PREFIX L".RUN"));
 int WINAPI xll_monte_run()
 {
 #pragma XLLEXPORT
-    bool run{true};
-    double start = Excel(xlfNow);
+    if (monte::state() == MONTE_IDLE) {
+        timer.start();
+    }
+    monte::next_state(MONTE_RUN);
+    monte::step(); // show signs of life
 
-    xll::monte::reset();
-    xll_monte_step(); // show signs of life
-
+    updater.start();
     Excel(xlcEcho, OPER(false));
-    while (run) {
-        double now = Excel(xlfNow);
-        if (now - start > update) {
-            start = now;
+    while (monte::state() == MONTE_RUN) {
+        if (updater.elapsed() > update) {
+            updater.start();
 
             Excel(xlcEcho, OPER(true));
             update_message_bar();
             Excel(xlcEcho, OPER(false));
 
             if (Excel(xlAbort)) {
-                run = false;
+                monte::next_state(MONTE_PAUSE);
             }
-        } else {
-            monte_step();
         }
+        timer.resume();
+        monte::step();
+        timer.pause();
     }
     Excel(xlcEcho, OPER(true));
 
     return TRUE;
+}
+
+AddIn xai_monte_pause(
+    Function(XLL_BOOL, L"?xll_monte_pause", XLL_PREFIX L".PAUSE")
+    .Arg(XLL_BOOL, L"condition", L"Pause simulation if condition is true.")
+    .Category(XLL_PREFIX)
+);
+BOOL WINAPI xll_monte_pause(BOOL condition)
+{
+#pragma XLLEXPORT
+    if (condition) {
+        monte::next_state(MONTE_PAUSE);
+    }
+
+    return condition;
 }
