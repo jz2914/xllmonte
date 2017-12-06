@@ -1,4 +1,5 @@
-// xllmonte.cpp - Monte Carlo simulation for Excel
+// monte.cpp - Monte Carlo simulation for Excel
+// Copyright (c) 2017 KALX, LLC. All rights reserved. No warranty is made.
 #include "monte.h"
 
 using namespace xll;
@@ -9,11 +10,16 @@ MONTE_STATE monte::next_state_ = MONTE_IDLE;
 int monte::calculate_ = xlcCalculateNow;
 
 // screen updates every 0.5 seconds
-constexpr double update = 0.5;
+double update = 0.5;
 
 struct Timer {
     double start_, stop_, elapsed_;
     bool running_ = false;
+    void reset()
+    {
+        elapsed_ = 0;
+        running_ = false;
+    }
     void start()
     {
         start_ = Excel(xlfNow);
@@ -60,6 +66,13 @@ double WINAPI xll_monte_elapsed_(void)
     return timer.elapsed();
 }
 
+void updating(bool b)
+{
+    Excel(xlcEcho, OPER(b));
+    Excel(xlcEcho, OPER(!b));
+    Excel(xlcEcho, OPER(b));
+}
+
 static void update_message_bar()
 {
 	static OPER xFmtElapsed(L"mm:ss.0;@");
@@ -70,6 +83,7 @@ static void update_message_bar()
     double elapsed = timer.elapsed();
 	double per = elapsed == 0 ? 0 : count/elapsed;
 
+    updating(true);
 	Excel(xlcMessage
 		,OPER(true)
 		,Excel(xlfConcatenate
@@ -81,16 +95,18 @@ static void update_message_bar()
 			,xE
 		)
 	);
-
     // Fool Excel into updating workbook.
 //    const auto& wb = Excel(xlfGetWorkbook, OPER(16));
 //    Excel(xlcWorkbookSelect, wb);
+    updating(false);
+
 }
 
 AddIn xai_monte_reset(Macro(L"?xll_monte_reset", XLL_PREFIX L".RESET"));
 int WINAPI xll_monte_reset()
 {
 #pragma XLLEXPORT
+    timer.reset();
     monte::reset();
     update_message_bar();
 
@@ -119,15 +135,11 @@ int WINAPI xll_monte_run()
     monte::step(); // show signs of life
 
     updater.start();
-    Excel(xlcEcho, OPER(false));
+    updating(false);
     while (monte::state() == MONTE_RUN) {
         if (updater.elapsed() > update) {
             updater.start();
-
-            Excel(xlcEcho, OPER(true));
             update_message_bar();
-            Excel(xlcEcho, OPER(false));
-
             if (Excel(xlAbort)) {
                 monte::next_state(MONTE_PAUSE);
             }
@@ -136,7 +148,8 @@ int WINAPI xll_monte_run()
         monte::step();
         timer.pause();
     }
-    Excel(xlcEcho, OPER(true));
+    updating(true);
+    update_message_bar();
 
     return TRUE;
 }

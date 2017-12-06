@@ -1,4 +1,5 @@
-// xllmonte_stdev.cpp - running mean and standard deviation of a cell
+// stdev.cpp - running mean and standard deviation of a cell
+// Copyright (c) 2017 KALX, LLC. All rights reserved. No warranty is made.
 #include "monte.h"
 
 using namespace xll;
@@ -17,35 +18,42 @@ LPOPER WINAPI xll_monte_stdev(double x, BOOL reset)
     static OPER o;
 
     try {
-        double count = monte::count();
         o = Excel(xlCoerce, Excel(xlfCaller));
-        if (count != 1 && o.size() > 2) {
-            count = o[2];
-        }
-		
-        if (count == 1 || reset) {
-			o[0] = x;
-			if (o.size() > 1)
+        MONTE_STATE state = monte::state();
+
+        if (state == MONTE_RESET || reset) {
+            o[0] = 0;
+            if (o.size() > 1) {
                 o[1] = 0;
-            if (o.size() > 2)
-                o[2] = 1;
-		}
-        else {
-		    o[0] = x + (x - o[0])/count;
+                if (o.size() > 2) {
+                    o[2] = 0;
+                }
+            }
+        }
+
+        if (state == MONTE_RUN) {
+            double count = monte::count();
+            if (o.size() > 2) {
+                o[2] = o[2] + 1;
+                count = o[2];
+            }
+		    o[0] = o[0] + (x - o[0])/count;
 		    if (o.size() > 1) {
-				o[1] = (count - 2)*o[1]*o[1] 
-			  		  + count*(x - o[0])*(x - o[0])/(count - 1);
-				o[1] = sqrt(o[1]/(count - 1));
-		    }
-		    if (o.size() > 2) {
-			    o[2] = o[2] + 1;
+                if (count == 1) {
+                    o[1] = 0;
+                }
+                else {
+			        o[1] = (count - 2)*o[1]*o[1] 
+			  		    + count*(x - o[0])*(x - o[0])/(count - 1);
+			        o[1] = sqrt(o[1]/(count - 1));
+                }
 		    }
         }
     }
     catch (const std::exception& ex) {
         XLL_ERROR(ex.what());
 
-        o = OPER(xlerr::Value);
+        o = OPER(xlerr::NA);
     }
 
     return &o;

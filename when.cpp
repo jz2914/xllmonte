@@ -1,5 +1,5 @@
 // when.cpp - conditional execution
-// Copyright (c) 2011 KALX, LLC. All rights reserved. No warranty is made.
+// Copyright (c) 2017 KALX, LLC. All rights reserved. No warranty is made.
 #include "monte.h"
 
 using namespace xll;
@@ -26,7 +26,8 @@ xll_monte_when(BOOL b, LPXLOPER12 px)
 #pragma XLLEXPORT
 	static OPER x;
 
-	if (b)
+    MONTE_STATE state = monte::state();
+	if (state == MONTE_RESET || (b && state == MONTE_RUN))
 		return px;
 
     x = Excel(xlCoerce, Excel(xlfCaller));
